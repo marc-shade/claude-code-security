@@ -1,0 +1,27 @@
+{
+  "_comment": "Custom policy patterns for the security gate. Keys are case-insensitive match strings, values are human-readable descriptions.",
+  "policy_patterns": {
+    "TODO": "Contains TODO marker",
+    "FIXME": "Contains FIXME marker",
+    "HACK": "Contains HACK marker",
+    "mock_data": "References mock data",
+    "placeholder": "Contains placeholder content",
+    "dummy_": "Contains dummy values",
+    "fake_": "Contains fake values",
+    "hardcoded": "Contains hardcoded values"
+  },
+  "injection_patterns": [
+    "ignore previous instructions",
+    "ignore all previous",
+    "disregard your instructions",
+    "system prompt:",
+    "jailbreak",
+    "DAN mode"
+  ],
+  "high_risk_sources": [
+    "webfetch",
+    "cluster_message",
+    "external_api",
+    "user_upload"
+  ]
+}
