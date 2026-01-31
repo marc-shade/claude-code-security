@@ -1,7 +1,7 @@
 # Claude Code Security
 
 <p align="center">
-  <img src="docs/logo.png" alt="Claude Code Security" width="200">
+  <img width="300" alt="ChatGPT Image Jan 31, 2026, 10_02_42 AM" src="https://github.com/user-attachments/assets/b60bc0da-e299-4d0c-89aa-f23b30bc7b6a" />
 </p>
 
 Progressive security hardening for [Claude Code](https://claude.com/claude-code) installations. Protect your agent's configuration, hooks, and runtime from injection attacks, unauthorized modifications, and supply chain risks.
