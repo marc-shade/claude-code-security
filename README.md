@@ -6,25 +6,6 @@
 
 Progressive security hardening for [Claude Code](https://claude.com/claude-code) installations. Protect your agent's configuration, hooks, and runtime from injection attacks, unauthorized modifications, and supply chain risks.
 
-## Security Posture
-
-This project was independently audited by **OpenAI Codex** and **Google Gemini** (Jan 2026). All Critical and High findings have been remediated:
-
-| Finding | Severity | Status |
-|---------|----------|--------|
-| TLS hostname verification disabled | CRITICAL | Fixed |
-| Audit log race condition + unkeyed chain | HIGH | Fixed |
-| PKI nonce replay on restart | HIGH | Fixed |
-| Command blocklist bypass | HIGH | Fixed |
-| Node ID path traversal | HIGH | Fixed |
-| Hook fail-open on exceptions | HIGH | Fixed |
-| Ed25519 token parsing | MEDIUM | Fixed |
-| Predictable key vault entropy | MEDIUM | Documented |
-| Unsigned files pass session start | MEDIUM | Fixed |
-| Absolute path for ioreg | LOW | Fixed |
-
-Full audit reports: [`AUDIT_REPORT.md`](AUDIT_REPORT.md)
-
 ## Quickstart
 
 ```bash
