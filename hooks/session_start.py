@@ -39,6 +39,13 @@ def main():
                 print(f"  TAMPERED: {f}", file=sys.stderr)
             sys.exit(2)
 
+        if report.unsigned:
+            print(
+                f"\nNOTE: {len(report.unsigned)} unsigned file(s). "
+                f"Run 'python3 -m claude_code_security.file_integrity sign-all' to sign.",
+                file=sys.stderr,
+            )
+
         sys.exit(0)
 
     except ImportError as e:

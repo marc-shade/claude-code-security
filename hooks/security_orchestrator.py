@@ -12,24 +12,38 @@ Exit codes:
 """
 
 import json
+import re
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Tools that should fail-closed (block on error)
+SENSITIVE_TOOLS = {"Bash", "Write", "Edit"}
+
+# Same regex patterns as pre_tool_use.py for consistency
+DANGEROUS_COMMAND_PATTERNS = [
+    r"rm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+/",
+    r"rm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+/",
+    r"mkfs\.",
+    r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;",
+    r"dd\s+.*of=/dev/[sh]d",
+    r"chmod\s+-R\s+777\s+/",
+    r"(curl|wget)\s+.*\|\s*(sh|bash|zsh)",
+    r">\s*/dev/[sh]d",
+    r"shred\s+.*(/dev/|/boot|/etc|/usr|/var)",
+    r"eval\s+.*\$\(.*base64",
+]
+
 
 def check_dangerous_commands(tool_name: str, tool_input: dict) -> str:
-    """Check for dangerous command patterns. Returns block reason or empty string."""
+    """Check for dangerous command patterns using regex. Returns block reason or empty."""
     if tool_name != "Bash":
         return ""
     command = tool_input.get("command", "")
-    dangerous = [
-        "rm -rf /", "rm -rf /*", "mkfs.", ":(){:|:&};:",
-        "dd if=/dev/zero of=/dev/sd", "chmod -R 777 /",
-    ]
-    for pattern in dangerous:
-        if pattern in command:
-            return f"Dangerous command pattern: '{pattern}'"
+    for pattern in DANGEROUS_COMMAND_PATTERNS:
+        if re.search(pattern, command):
+            return "Dangerous command pattern detected"
     return ""
 
 
@@ -77,7 +91,31 @@ def check_file_integrity(tool_name: str, tool_input: dict) -> str:
     return ""
 
 
+def check_approval_token(tool_name: str, tool_input: dict) -> str:
+    """Check approval token for monitored file modifications."""
+    if tool_name not in ("Write", "Edit"):
+        return ""
+    file_path = tool_input.get("file_path", "")
+    try:
+        from claude_code_security.self_modification_auditor import is_monitored_path
+        if is_monitored_path(file_path):
+            token = os.environ.get("CLAUDE_SECURITY_APPROVAL_TOKEN", "")
+            if token:
+                try:
+                    from claude_code_security.approval_tokens import ApprovalTokenManager
+                    mgr = ApprovalTokenManager()
+                    valid, reason = mgr.validate_token(token, f"modify:{file_path}")
+                    if not valid:
+                        return f"Invalid approval token for {file_path}: {reason}"
+                except ImportError:
+                    pass
+    except ImportError:
+        pass
+    return ""
+
+
 def main():
+    tool_name = ""
     try:
         raw = sys.stdin.read()
         if not raw.strip():
@@ -91,6 +129,7 @@ def main():
             ("dangerous_commands", check_dangerous_commands),
             ("injection", check_injection),
             ("file_integrity", check_file_integrity),
+            ("approval_token", check_approval_token),
         ]
 
         for check_name, check_fn in checks:
@@ -105,6 +144,9 @@ def main():
         sys.exit(0)
     except Exception as e:
         print(f"Security orchestrator error: {e}", file=sys.stderr)
+        # Fail-closed for sensitive tools
+        if tool_name in SENSITIVE_TOOLS:
+            sys.exit(2)
         sys.exit(1)
 
 

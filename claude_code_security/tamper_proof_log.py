@@ -15,6 +15,7 @@ Genesis hash: '0' * 64
 """
 
 import hashlib
+import hmac
 import json
 import logging
 import sqlite3
@@ -68,11 +69,29 @@ class TamperProofLog:
         conn.commit()
         conn.close()
 
+    def _get_chain_key(self) -> bytes:
+        """Get HMAC key for chain authentication from vault."""
+        try:
+            from claude_code_security.key_vault import KeyVault
+            vault = KeyVault()
+            key = vault.load_key("audit_chain_key")
+            if key:
+                return key
+            import os
+            key = os.urandom(32)
+            vault.store_key("audit_chain_key", key)
+            return key
+        except Exception:
+            return b""
+
     def _compute_hash(
         self, prev_hash: str, timestamp: str, event_type: str,
         actor: str, action: str, target: str, details: str,
     ) -> str:
         message = f"{prev_hash}{timestamp}{event_type}{actor}{action}{target}{details}"
+        chain_key = self._get_chain_key()
+        if chain_key:
+            return hmac.new(chain_key, message.encode("utf-8"), hashlib.sha256).hexdigest()
         return hashlib.sha256(message.encode("utf-8")).hexdigest()
 
     def _get_last_hash(self, conn: sqlite3.Connection) -> str:
@@ -105,8 +124,9 @@ class TamperProofLog:
             The ID of the new entry
         """
         with self._lock:
-            conn = sqlite3.connect(str(self.db_path))
+            conn = sqlite3.connect(str(self.db_path), timeout=10)
             try:
+                conn.execute("BEGIN EXCLUSIVE")
                 timestamp = datetime.now(timezone.utc).isoformat()
                 prev_hash = self._get_last_hash(conn)
                 entry_hash = self._compute_hash(
@@ -128,6 +148,9 @@ class TamperProofLog:
                     )
 
                 return entry_id
+            except Exception:
+                conn.rollback()
+                raise
             finally:
                 conn.close()
 

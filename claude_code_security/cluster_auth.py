@@ -103,12 +103,20 @@ class ClusterAuth:
         return derive_node_token(node_id, self.secret)
 
     def validate_token(self, node_id: str, token: str) -> bool:
-        """Validate a token. Supports ed25519:<challenge>:<signature> format."""
+        """Validate a token. Supports ed25519:<challenge_data>:<signature> format.
+
+        The challenge_data itself contains a colon (nonce:timestamp), so we
+        split from the right to separate the signature from challenge_data.
+        """
         if token.startswith("ed25519:") and self._pki:
-            parts = token.split(":", 2)
-            if len(parts) == 3:
+            remainder = token[len("ed25519:"):]
+            # Signature is the last colon-separated field (hex, 128 chars for Ed25519)
+            last_colon = remainder.rfind(":")
+            if last_colon > 0:
+                challenge_data = remainder[:last_colon]
+                signature_hex = remainder[last_colon + 1:]
                 valid, _ = self._pki.verify_challenge_response(
-                    node_id, parts[1], parts[2],
+                    node_id, challenge_data, signature_hex,
                 )
                 if valid:
                     return True

@@ -42,7 +42,7 @@ def _get_machine_entropy() -> bytes:
     if platform.system() == "Darwin":
         try:
             result = subprocess.run(
-                ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+                ["/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
                 capture_output=True, text=True, timeout=5,
             )
             for line in result.stdout.splitlines():

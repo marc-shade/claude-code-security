@@ -16,8 +16,8 @@ Authentication Flow:
 import json
 import logging
 import os
+import sqlite3
 import time
-from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -31,20 +31,71 @@ class ClusterPKI:
     Ed25519 challenge-response authentication for cluster nodes.
 
     Private key encrypted via KeyVault. 5-minute challenge expiry.
-    Nonce replay protection (in-memory, last N nonces).
+    Nonce replay protection (persistent SQLite, TTL-based cleanup).
     """
 
     def __init__(self, keys_dir: Optional[Path] = None):
         self.keys_dir = keys_dir or config.CLUSTER_KEYS_DIR
         self.keys_dir.mkdir(parents=True, exist_ok=True)
-        self._used_nonces: OrderedDict = OrderedDict()
+        self._nonce_db_path = self.keys_dir / ".nonce_replay.db"
+        self._init_nonce_db()
+
+    def _init_nonce_db(self):
+        """Create SQLite table for persistent nonce replay protection."""
+        conn = sqlite3.connect(str(self._nonce_db_path))
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS used_nonces (
+                nonce TEXT PRIMARY KEY,
+                used_at REAL NOT NULL
+            )
+        """)
+        conn.commit()
+        conn.close()
+        try:
+            self._nonce_db_path.chmod(0o600)
+        except OSError:
+            pass
+
+    def _is_nonce_used(self, nonce: str) -> bool:
+        """Check if a nonce has been used (with TTL cleanup)."""
+        conn = sqlite3.connect(str(self._nonce_db_path))
+        try:
+            cutoff = time.time() - config.CHALLENGE_EXPIRY_SECONDS - 60
+            conn.execute("DELETE FROM used_nonces WHERE used_at < ?", (cutoff,))
+            conn.commit()
+            row = conn.execute(
+                "SELECT 1 FROM used_nonces WHERE nonce = ?", (nonce,)
+            ).fetchone()
+            return row is not None
+        finally:
+            conn.close()
+
+    def _record_nonce(self, nonce: str):
+        """Record a nonce as used."""
+        conn = sqlite3.connect(str(self._nonce_db_path))
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO used_nonces (nonce, used_at) VALUES (?, ?)",
+                (nonce, time.time()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     def _get_vault(self):
         from claude_code_security.key_vault import KeyVault
         return KeyVault()
 
+    @staticmethod
+    def _validate_node_id(node_id: str):
+        """Validate node_id to prevent path traversal."""
+        import re
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$', node_id):
+            raise ValueError(f"Invalid node_id: must match [a-zA-Z0-9][a-zA-Z0-9._-]{{0,63}}")
+
     def get_or_create_keypair(self, node_id: str) -> Dict:
         """Get or create an Ed25519 keypair for a node."""
+        self._validate_node_id(node_id)
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
         from cryptography.hazmat.primitives import serialization
 
@@ -95,6 +146,7 @@ class ClusterPKI:
 
     def sign_challenge(self, node_id: str, challenge_data: str) -> Optional[str]:
         """Sign a challenge with the node's private key. Returns hex signature."""
+        self._validate_node_id(node_id)
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
         vault_name = f"cluster_ed25519_{node_id}"
@@ -115,6 +167,7 @@ class ClusterPKI:
         self, node_id: str, challenge_data: str, signature_hex: str,
     ) -> Tuple[bool, str]:
         """Verify a challenge-response signature."""
+        self._validate_node_id(node_id)
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
         if self.is_revoked(node_id):
@@ -135,7 +188,7 @@ class ClusterPKI:
         except ValueError:
             return False, "Invalid challenge timestamp"
 
-        if nonce in self._used_nonces:
+        if self._is_nonce_used(nonce):
             return False, "Nonce replay detected"
 
         pub_path = self.keys_dir / f"{node_id}.pub"
@@ -149,15 +202,14 @@ class ClusterPKI:
             signature = bytes.fromhex(signature_hex)
             public_key.verify(signature, challenge_data.encode("utf-8"))
 
-            self._used_nonces[nonce] = time.time()
-            if len(self._used_nonces) > config.MAX_NONCES:
-                self._used_nonces.popitem(last=False)
+            self._record_nonce(nonce)
 
             return True, "Signature verified"
         except Exception as e:
             return False, f"Signature verification failed: {e}"
 
     def revoke_node(self, node_id: str, reason: str = "") -> bool:
+        self._validate_node_id(node_id)
         try:
             revoked = self._load_revocation_list()
             revoked[node_id] = {"revoked_at": time.time(), "reason": reason}

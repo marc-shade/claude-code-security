@@ -103,6 +103,10 @@ class TLSManager:
 
     def generate_node_cert(self, node_id: str) -> Dict:
         """Generate a TLS certificate for a node."""
+        import re
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$', node_id):
+            raise ValueError(f"Invalid node_id: must match [a-zA-Z0-9][a-zA-Z0-9._-]{{0,63}}")
+
         from cryptography import x509
         from cryptography.x509.oid import NameOID
         from cryptography.hazmat.primitives import hashes, serialization
@@ -114,7 +118,6 @@ class TLSManager:
         sans = [
             x509.DNSName(node_id),
             x509.DNSName(f"{node_id}.local"),
-            x509.DNSName("localhost"),
         ]
         subject = x509.Name([
             x509.NameAttribute(NameOID.COMMON_NAME, node_id),
@@ -168,7 +171,7 @@ class TLSManager:
             "key_path": str(key_path),
             "ca_cert_path": str(self.certs_dir / "cluster_ca.pem"),
             "expires": not_after.isoformat(),
-            "sans": [node_id, f"{node_id}.local", "localhost"],
+            "sans": [node_id, f"{node_id}.local"],
         }
 
     def create_ssl_context(self, node_id: str, purpose: str = "client") -> ssl.SSLContext:
@@ -188,7 +191,10 @@ class TLSManager:
         ctx.load_cert_chain(str(cert_path), str(key_path))
         ctx.load_verify_locations(str(ca_cert_path))
         ctx.verify_mode = ssl.CERT_REQUIRED
-        ctx.check_hostname = False
+        if purpose == "client":
+            ctx.check_hostname = True
+        else:
+            ctx.check_hostname = False
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         return ctx
 
