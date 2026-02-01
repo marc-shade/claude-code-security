@@ -2,10 +2,11 @@
 Security Gate: Injection + policy + threat scanning. [Tier 2]
 
 Chains security scanners into a single pipeline:
-1. (Optional) LLM classifier for high-risk sources
-2. Prompt injection detection (heuristic patterns)
-3. Policy check (configurable forbidden patterns)
-4. Threat intelligence (URL/IP/payload detection)
+0. (Optional) LLM classifier for high-risk sources
+1. Prompt injection detection (heuristic patterns)
+2. Policy check (configurable forbidden patterns)
+3. Threat intelligence (URL/IP/payload detection)
+4. (Optional) RedSage deep analysis for HIGH+ severity findings
 
 Returns a SecurityVerdict: ALLOW, WARN, or BLOCK.
 """
@@ -319,6 +320,65 @@ def _scan_llm_classifier(content: str, source: str = "") -> Optional[ScanResult]
         return None
 
 
+def _scan_redsage(content: str, source: str, prior_results: List[ScanResult]) -> Optional[ScanResult]:
+    """Phase 4 (optional): RedSage deep analysis for flagged content.
+
+    Only invoked when earlier phases produced HIGH+ severity findings,
+    providing contextual second-opinion analysis to reduce false positives.
+    """
+    if not config.REDSAGE_ENABLED:
+        return None
+
+    # Only invoke RedSage for HIGH+ severity findings from earlier phases
+    max_prior = Severity.NONE
+    for r in prior_results:
+        if SEVERITY_ORDER.index(r.severity) > SEVERITY_ORDER.index(max_prior):
+            max_prior = r.severity
+    if SEVERITY_ORDER.index(max_prior) < SEVERITY_ORDER.index(Severity.HIGH):
+        return None
+
+    try:
+        from claude_code_security.redsage_analyzer import analyze_content
+
+        prior_findings = []
+        for r in prior_results:
+            prior_findings.extend(r.findings)
+
+        result = analyze_content(content, source, prior_findings)
+        if result is None:
+            return None
+
+        verdict = result.get("verdict", "").upper()
+        confidence = float(result.get("confidence", 0))
+        category = result.get("category", "unknown")
+        reasoning = result.get("reasoning", "")
+
+        if verdict == "MALICIOUS" and confidence >= 0.7:
+            severity = Severity.CRITICAL
+        elif verdict == "MALICIOUS":
+            severity = Severity.HIGH
+        elif verdict == "SUSPICIOUS":
+            severity = Severity.MEDIUM
+        else:
+            # RedSage says SAFE — downgrade prior findings
+            return ScanResult(
+                scanner="redsage_analyzer",
+                severity=Severity.NONE,
+                findings=[f"RedSage ({confidence:.0%}): {reasoning} [{category}]"],
+            )
+
+        return ScanResult(
+            scanner="redsage_analyzer",
+            severity=severity,
+            findings=[f"RedSage ({confidence:.0%}): {reasoning} [{category}]"],
+            raw=result,
+        )
+
+    except Exception as e:
+        logger.debug(f"RedSage analysis unavailable: {e}")
+        return None
+
+
 def scan_content(
     content: str,
     source: str = "unknown",
@@ -368,6 +428,11 @@ def scan_content(
 
     # Phase 3: Threat intelligence
     results.append(_scan_threat_intel(content, source))
+
+    # Phase 4: RedSage deep analysis (only for HIGH+ severity findings)
+    redsage_result = _scan_redsage(content, source, results)
+    if redsage_result:
+        results.append(redsage_result)
 
     # Determine final verdict
     max_severity = Severity.NONE

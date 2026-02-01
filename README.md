@@ -113,6 +113,9 @@ All paths and thresholds are in `claude_code_security/config.py`, overridable vi
 | `CLAUDE_CODE_SECURITY_LOKI_ENABLED` | `false` | Forward audit entries to Loki |
 | `CLAUDE_CODE_SECURITY_CB_FAILURES` | `3` | Circuit breaker failure threshold |
 | `CLAUDE_CODE_SECURITY_CB_TIMEOUT` | `120` | Circuit breaker timeout (seconds) |
+| `CLAUDE_CODE_SECURITY_REDSAGE_ENABLED` | `false` | Enable RedSage local LLM deep analysis |
+| `CLAUDE_CODE_SECURITY_REDSAGE_URL` | `http://localhost:8800/v1/chat/completions` | RedSage API endpoint |
+| `CLAUDE_CODE_SECURITY_REDSAGE_TIMEOUT` | `30` | RedSage query timeout (seconds) |
 
 ## Hook Behavior
 
@@ -149,6 +152,19 @@ mgr = ApprovalTokenManager()
 token = mgr.generate_token("modify:~/.claude/CLAUDE.md")
 ```
 
+### Deep analysis with RedSage (local LLM)
+```python
+from claude_code_security.redsage_analyzer import analyze_content, extract_iocs
+
+# Analyze flagged content
+result = analyze_content("suspicious payload", source="webfetch")
+print(result)  # {"verdict": "MALICIOUS", "confidence": 0.95, ...}
+
+# Extract IOCs from text
+iocs = extract_iocs("connection to 185.220.101.34 on port 9001")
+print(iocs)  # {"iocs": [{"type": "ip", ...}], "risk_summary": "..."}
+```
+
 ### Verify audit chain integrity
 ```python
 from claude_code_security.tamper_proof_log import TamperProofLog
@@ -182,7 +198,7 @@ valid, msg = pki.verify_challenge_response("mac-studio", challenge["challenge_da
 ## Testing
 
 ```bash
-# Run all 93 tests
+# Run all 108 tests
 python -m pytest tests/ -v
 
 # By tier
@@ -208,6 +224,7 @@ claude-code-security/
 |   +-- file_watcher.py              # Watchdog real-time monitoring
 |   +-- cluster_auth.py              # HMAC + RBAC node auth
 |   +-- cluster_pki.py               # Ed25519 challenge-response
+|   +-- redsage_analyzer.py          # Local LLM deep threat analysis
 |   +-- tls_manager.py               # ECDSA P-256 cluster CA
 +-- hooks/                            # Ready-to-install hook scripts
 +-- templates/                         # Settings templates per tier

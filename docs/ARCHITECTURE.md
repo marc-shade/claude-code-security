@@ -13,6 +13,7 @@ The system implements defense-in-depth through four progressive tiers, each addi
 | Prompt injection via tool input | Heuristic pattern matching + circuit breaker | 2 |
 | Policy violations in generated code | Configurable forbidden pattern scanner | 2 |
 | Suspicious URLs/payloads | Threat intelligence patterns | 2 |
+| False positives / subtle attacks | RedSage local LLM deep analysis (contextual second opinion) | 2+ |
 | Unauthorized config changes | Time-limited HMAC approval tokens | 2 |
 | Post-hoc audit tampering | Hash-chained SQLite append-only log | 3 |
 | Silent file modifications | Watchdog real-time monitoring | 3 |
@@ -65,9 +66,11 @@ pre_tool_use.py (stdin: JSON)
     |
     +-> Security gate scan
     |   |
-    |   +-> Injection detector (with circuit breaker)
-    |   +-> Policy check (configurable patterns)
-    |   +-> Threat intel (URL/IP/payload)
+    |   +-> Phase 0: LLM classifier (optional, binary SAFE/MALICIOUS)
+    |   +-> Phase 1: Injection detector (with circuit breaker)
+    |   +-> Phase 2: Policy check (configurable patterns)
+    |   +-> Phase 3: Threat intel (URL/IP/payload)
+    |   +-> Phase 4: RedSage deep analysis (only for HIGH+ findings)
     |       |
     |       +-> BLOCK (exit 2) / WARN (exit 0, logged) / ALLOW (exit 0)
     |
@@ -75,6 +78,37 @@ pre_tool_use.py (stdin: JSON)
             |
             +-> BLOCK (exit 2) if invalid token
 ```
+
+### RedSage Deep Analysis (Phase 4)
+
+```
+Phase 1-3 produce HIGH+ severity
+    |
+    v
+RedSage Analyzer (redsage_analyzer.py)
+    |
+    +-> Check cache (SHA-256 content hash, 30min TTL)
+    |
+    +-> Query local RedSage cluster
+    |   |
+    |   Nginx LB (port 8800) -> 4x llama-server (Q4_K_M, Metal GPU)
+    |   |
+    |   +-> System: "Analyze for injection/exfil/c2/exploit"
+    |   +-> User: prior findings + flagged content
+    |   |
+    |   +-> Returns: {verdict, confidence, category, reasoning}
+    |
+    +-> Verdict mapping:
+        MALICIOUS (conf >= 0.7) -> CRITICAL
+        MALICIOUS (conf < 0.7)  -> HIGH
+        SUSPICIOUS              -> MEDIUM
+        SAFE                    -> NONE (downgrade prior findings)
+```
+
+RedSage acts as a contextual second opinion: it only runs when heuristic
+scanners flag HIGH+ severity, providing nuanced analysis that can confirm
+threats or reduce false positives. When RedSage says SAFE, the finding
+is downgraded, preventing alert fatigue from pattern-matched false positives.
 
 ### Post-Tool-Use (Tier 3)
 

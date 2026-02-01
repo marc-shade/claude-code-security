@@ -207,3 +207,21 @@ NODE_CERT_VALIDITY_DAYS = _env_int("CLAUDE_CODE_SECURITY_CERT_VALIDITY_DAYS", 36
 CB_FAILURE_THRESHOLD = _env_int("CLAUDE_CODE_SECURITY_CB_FAILURES", 3)
 CB_TIMEOUT_SECONDS = _env_int("CLAUDE_CODE_SECURITY_CB_TIMEOUT", 120)
 CB_SUCCESS_THRESHOLD = _env_int("CLAUDE_CODE_SECURITY_CB_SUCCESSES", 2)
+
+# ============================================================================
+# RedSage Analyzer (local LLM deep analysis)
+# ============================================================================
+
+REDSAGE_ENABLED = _env_bool("CLAUDE_CODE_SECURITY_REDSAGE_ENABLED", False)
+REDSAGE_API_URL = os.environ.get(
+    "CLAUDE_CODE_SECURITY_REDSAGE_URL",
+    "http://localhost:8800/v1/chat/completions",
+)
+REDSAGE_HEALTH_URL = os.environ.get(
+    "CLAUDE_CODE_SECURITY_REDSAGE_HEALTH_URL",
+    "http://localhost:8800/health",
+)
+REDSAGE_TIMEOUT_SECONDS = _env_int("CLAUDE_CODE_SECURITY_REDSAGE_TIMEOUT", 30)
+REDSAGE_MAX_INPUT_CHARS = _env_int("CLAUDE_CODE_SECURITY_REDSAGE_MAX_INPUT", 4000)
+REDSAGE_CACHE_MAX = _env_int("CLAUDE_CODE_SECURITY_REDSAGE_CACHE_MAX", 500)
+REDSAGE_CACHE_TTL = _env_int("CLAUDE_CODE_SECURITY_REDSAGE_CACHE_TTL", 1800)
