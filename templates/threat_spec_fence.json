@@ -1,0 +1,89 @@
+{
+  "name": "Example Stack Spec Fence",
+  "version": "1.0.0",
+  "description": "CVE filter template - only track vulnerabilities relevant to your tech stack. Customize the entries below to match your infrastructure.",
+
+  "stack": {
+    "operating_systems": [
+      {"vendor": "apple", "product": "macos", "priority": "critical"},
+      {"vendor": "canonical", "product": "ubuntu", "priority": "critical"},
+      {"vendor": "linux", "product": "linux_kernel", "priority": "critical"}
+    ],
+
+    "languages_runtimes": [
+      {"vendor": "python", "product": "python", "priority": "critical"},
+      {"vendor": "nodejs", "product": "node.js", "priority": "high"},
+      {"vendor": "rust-lang", "product": "rust", "priority": "medium"}
+    ],
+
+    "databases": [
+      {"vendor": "postgresql", "product": "postgresql", "priority": "critical"},
+      {"vendor": "redis", "product": "redis", "priority": "critical"},
+      {"vendor": "sqlite", "product": "sqlite", "priority": "high"},
+      {"vendor": "qdrant", "product": "qdrant", "priority": "high"}
+    ],
+
+    "web_frameworks": [
+      {"vendor": "tiangolo", "product": "fastapi", "priority": "critical"},
+      {"vendor": "encode", "product": "uvicorn", "priority": "critical"},
+      {"vendor": "aio-libs", "product": "aiohttp", "priority": "critical"},
+      {"vendor": "expressjs", "product": "express", "priority": "high"}
+    ],
+
+    "infrastructure": [
+      {"vendor": "grafana", "product": "grafana", "priority": "critical"},
+      {"vendor": "prometheus", "product": "prometheus", "priority": "high"},
+      {"vendor": "grafana", "product": "loki", "priority": "high"},
+      {"vendor": "temporalio", "product": "temporal", "priority": "critical"},
+      {"vendor": "n8n", "product": "n8n", "priority": "high"},
+      {"vendor": "nginx", "product": "nginx", "priority": "high"}
+    ],
+
+    "ai_ml": [
+      {"vendor": "ollama", "product": "ollama", "priority": "critical"},
+      {"vendor": "anthropic", "product": "claude", "priority": "critical"},
+      {"vendor": "openai", "product": "openai", "priority": "high"},
+      {"vendor": "langchain", "product": "langchain", "priority": "medium"}
+    ],
+
+    "containers": [
+      {"vendor": "docker", "product": "docker", "priority": "high"},
+      {"vendor": "redhat", "product": "podman", "priority": "high"}
+    ],
+
+    "security": [
+      {"vendor": "openssh", "product": "openssh", "priority": "critical"},
+      {"vendor": "openssl", "product": "openssl", "priority": "critical"},
+      {"vendor": "curl", "product": "curl", "priority": "high"}
+    ],
+
+    "python_packages": [
+      "pydantic", "sqlalchemy", "httpx", "requests", "websockets",
+      "pillow", "numpy", "pandas", "anthropic", "openai", "mcp",
+      "aiohttp", "fastapi", "uvicorn", "redis", "asyncpg", "psycopg2"
+    ],
+
+    "node_packages": [
+      "express", "next", "react", "axios", "socket.io", "ws"
+    ]
+  },
+
+  "cve_keywords": [
+    "python", "postgresql", "postgres", "redis", "sqlite", "qdrant",
+    "fastapi", "uvicorn", "aiohttp", "node", "nodejs", "npm",
+    "grafana", "prometheus", "loki", "temporal", "n8n",
+    "ollama", "docker", "podman", "container",
+    "macos", "darwin", "ubuntu", "linux kernel",
+    "openssh", "openssl", "curl", "nginx",
+    "pydantic", "sqlalchemy", "langchain", "anthropic"
+  ],
+
+  "exclude_keywords": [
+    "windows", "iis", "asp.net", "sharepoint", "exchange",
+    "oracle database", "mysql", "mariadb", "mongodb",
+    "java", "spring", "tomcat", "jenkins", "jira",
+    "cisco", "fortinet", "palo alto", "checkpoint",
+    "wordpress", "drupal", "joomla", "php",
+    "sap", "salesforce", "servicenow"
+  ]
+}

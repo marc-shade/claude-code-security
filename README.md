@@ -48,7 +48,7 @@ bash setup.sh --tier 1
 
 | Tier | Name | What You Get | Deps |
 |------|------|--------------|------|
-| 1 | Foundation | Key vault (AES-256-GCM) + file integrity signing (HMAC-SHA256), session-start verification | None |
+| 1 | Foundation | Key vault (AES-256-GCM) + token vault + file integrity signing (HMAC-SHA256), session-start verification | None |
 | 2 | Active Defense | + Injection scanner, policy gate, circuit breaker, approval tokens, pre/post hooks | None |
 | 3 | Audit & Monitoring | + HMAC-keyed hash-chained tamper-proof log, self-mod auditor, real-time file watcher | `watchdog` |
 | 4 | Cluster | + Multi-node HMAC auth, Ed25519 PKI (persistent nonce replay protection), TLS certificates (ECDSA P-256), RBAC | `cryptography` |
@@ -173,6 +173,32 @@ result = log.verify_chain()
 print(result)  # {'valid': True, 'entries_checked': 128, ...}
 ```
 
+### Store and manage API tokens
+```python
+from claude_code_security.token_vault import TokenVault
+
+vault = TokenVault()
+
+# Store tokens (auto-categorized by name)
+vault.store_token("ANTHROPIC_API_KEY", "sk-ant-...")
+vault.store_token("STRIPE_SECRET_KEY", "sk_live_...", category="service")
+
+# Retrieve
+key = vault.get_token("ANTHROPIC_API_KEY")
+
+# Generate shell exports for all tokens
+print(vault.export_shell())
+# => export ANTHROPIC_API_KEY='sk-ant-...'
+# => export STRIPE_SECRET_KEY='sk_live_...'
+
+# Import tokens from current environment
+results = vault.import_from_env(names=["OPENAI_API_KEY", "GROQ_API_KEY"])
+
+# Status summary
+print(vault.get_status())
+# => {'token_count': 3, 'by_category': {'llm': 2, 'service': 1}, ...}
+```
+
 ### Cluster node authentication (Tier 4)
 ```python
 from claude_code_security.cluster_pki import ClusterPKI
@@ -182,6 +208,67 @@ challenge = pki.create_auth_challenge()
 sig = pki.sign_challenge("mac-studio", challenge["challenge_data"])
 valid, msg = pki.verify_challenge_response("mac-studio", challenge["challenge_data"], sig)
 ```
+
+## Production Hooks
+
+The `hooks/` directory contains battle-tested hook scripts ready for production use. Copy them to `~/.claude/hooks/` and register in `~/.claude/settings.json`.
+
+### Bash Safety Logger (`hooks/bash_safety_logger.py`)
+
+**Hook type:** PreToolUse (command), matcher: `Bash`
+
+Blocks dangerous commands via regex pattern matching across six categories:
+
+| Category | Examples |
+|----------|----------|
+| Credential leaks | API keys (OpenAI, Anthropic, AWS, GitHub PATs), bearer tokens, private keys |
+| Reverse shells | bash -i, nc -e, socat, python/perl/ruby/php reverse shells |
+| Data exfiltration | curl/wget file upload, DNS exfil, env-to-network pipes |
+| Obfuscated exec | base64 decode to shell, curl pipe to sh/python, eval subshells |
+| Cron/SSH injection | Crontab remote exec, SSH authorized_keys manipulation |
+| Dangerous rm | rm -rf / (blocked), rm -rf /path (auto-fixed with --preserve-root) |
+
+Localhost commands are exempted from credential and obfuscation checks (routine dev pattern). All commands are logged to `~/.claude/bash_commands.jsonl` for audit.
+
+### Damage Control (`hooks/damage_control_check.py` + `hooks/damage_control_patterns.yaml`)
+
+**Hook type:** PreToolUse integration (import into your pre-tool-use hook)
+
+YAML-driven command and path protection with three path categories:
+
+- **zeroAccessPaths**: No read, write, or any access (`.env`, `~/.ssh/`, `~/.aws/`, `*.pem`, etc.)
+- **readOnlyPaths**: Read allowed, write/edit/delete blocked (`/etc/`, lock files, build artifacts)
+- **noDeletePaths**: Read/write allowed, delete blocked (`~/.claude/`, `.git/`, LICENSE, CI configs)
+
+Command patterns cover destructive operations across 20+ platforms: git, AWS, GCP, Firebase, Vercel, Netlify, Cloudflare, Docker, Kubernetes, Terraform, Heroku, Fly.io, DigitalOcean, and database CLIs. Supports glob patterns and `ask: true` for confirmation prompts on risky-but-legitimate operations (e.g., `git stash drop`).
+
+### Permission Request (`hooks/permission_request.py`)
+
+**Hook type:** PermissionRequest (command), matcher: `.*`
+
+Intelligent auto-approval that reduces permission prompt fatigue:
+- Auto-approves safe tools (Glob, Grep, WebSearch) unconditionally
+- Auto-approves Read/Write/Edit for trusted project paths (configurable)
+- Auto-approves common Bash commands (ls, cat, grep, git, python, etc.)
+- Auto-denies dangerous patterns (rm -rf /, fork bombs, pipe-to-shell)
+- Logs all decisions to `~/.claude/permission_log.jsonl`
+
+### Quality Gates (Agent Teams)
+
+Two hooks for [Agent Teams](https://docs.anthropic.com/en/docs/claude-code/agent-teams) that enforce production-quality standards:
+
+**Task Completed (`hooks/task_completed_quality_gate.py`)**
+- **Hook type:** TaskCompleted (command)
+- Parses the teammate's transcript to extract actual code written (Write/Edit tool inputs)
+- Checks for: unresolved TODOs/FIXMEs, NotImplementedError stubs, fake/mock data assignments, bare `except: pass`
+- Exit code 2 blocks task completion with feedback
+
+**Teammate Idle (`hooks/teammate_idle_quality_gate.py`)**
+- **Hook type:** TeammateIdle (command)
+- Finds recently modified files via `git diff` (scoped to 30-minute recency window)
+- Runs `py_compile` on modified Python files to catch syntax errors
+- Checks for forbidden patterns: TODO, FIXME, HACK, placeholder, mock data, hardcoded, proof of concept
+- Exit code 2 keeps the teammate working with actionable feedback
 
 ## Cryptographic Primitives
 
@@ -198,11 +285,11 @@ valid, msg = pki.verify_challenge_response("mac-studio", challenge["challenge_da
 ## Testing
 
 ```bash
-# Run all 108 tests
+# Run all tests
 python -m pytest tests/ -v
 
 # By tier
-python -m pytest tests/test_key_vault.py tests/test_file_integrity.py -v  # Tier 1
+python -m pytest tests/test_key_vault.py tests/test_token_vault.py tests/test_file_integrity.py -v  # Tier 1
 python -m pytest tests/test_security_gate.py -v                           # Tier 2
 python -m pytest tests/test_tamper_proof_log.py -v                        # Tier 3
 python -m pytest tests/test_cluster_pki.py tests/test_tls_manager.py -v   # Tier 4
@@ -215,6 +302,7 @@ claude-code-security/
 +-- claude_code_security/              # Python package
 |   +-- config.py                      # All paths/thresholds (env-overridable)
 |   +-- key_vault.py                   # AES-256-GCM encrypted key storage
+|   +-- token_vault.py                # API token management on top of KeyVault
 |   +-- file_integrity.py              # HMAC-SHA256 file signing
 |   +-- security_gate.py              # Injection + policy + threat scanning
 |   +-- circuit_breaker.py            # Fail-closed pattern
@@ -226,9 +314,21 @@ claude-code-security/
 |   +-- cluster_pki.py               # Ed25519 challenge-response
 |   +-- redsage_analyzer.py          # Local LLM deep threat analysis
 |   +-- tls_manager.py               # ECDSA P-256 cluster CA
-+-- hooks/                            # Ready-to-install hook scripts
-+-- templates/                         # Settings templates per tier
-+-- tests/                             # 93 tests across all tiers
++-- hooks/                            # Production hook scripts
+|   +-- bash_safety_logger.py         # Bash command blocking + audit
+|   +-- damage_control_check.py       # Path/command damage control
+|   +-- damage_control_patterns.yaml  # YAML patterns for damage control
+|   +-- permission_request.py         # Intelligent auto-approval
+|   +-- task_completed_quality_gate.py  # Agent Teams task validation
+|   +-- teammate_idle_quality_gate.py   # Agent Teams idle check
+|   +-- pre_tool_use.py               # Security orchestrator hook
+|   +-- post_tool_use.py              # Post-execution audit hook
+|   +-- security_orchestrator.py      # Multi-phase security pipeline
+|   +-- session_start.py              # Session initialization hook
++-- templates/                         # Settings templates + examples
+|   +-- settings-tier[1-4].json       # Per-tier settings templates
+|   +-- threat_spec_fence.json        # CVE filter template for your stack
++-- tests/                             # Tests across all tiers
 +-- docs/                              # Architecture, tier guide, reference
 +-- setup.sh                           # One-command installer
 +-- pyproject.toml                     # pip-installable package
