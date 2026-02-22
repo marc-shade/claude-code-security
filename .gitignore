@@ -1,17 +1,52 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
 *.egg
+*.so
+.Python
+
+# Build
 dist/
 build/
 .eggs/
-*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+
+# Local files
+.env
+.env.*
+!.env.example
 *.db
 *.db-journal
+*.sqlite
+*.sqlite3
+*.log
+.DS_Store
+
+# Runtime data
+data/
+cache/
+logs/
+
+# Project-specific
 .vault/
 audit_logs/
 .file_integrity_manifest.json
